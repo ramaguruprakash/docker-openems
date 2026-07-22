@@ -29,7 +29,10 @@ dynamodb/iam/secretsmanager denied).
 **The ECS "production" stack described by `iac/` has never been deployed
 here** (or was fully torn down):
 
-- Terraform state bucket `openems-deployment-tf-state-file` → `NoSuchBucket`
+- Terraform state bucket: `terraform init` reads **`eiot-openems-tf-state-file`**
+  (per `iac/backend.tf` — the authoritative name; see #83). The recon verified
+  only that main's old name `openems-deployment-tf-state-file` does not exist;
+  the `eiot-…` bucket's existence is unverified (Aidan's console check, #83)
 - No `openems-deployment-vpc`, no `/ecs/openems-deployment-tds` log group,
   no load balancers
 
@@ -47,11 +50,19 @@ Implications for this plan:
 1. **There is no live production to break** — PR-A is a first-time bootstrap
    of the ECS stack, not a migration.
 2. **CI cannot deploy today**: the deploy pipeline's `terraform init` targets
-   the nonexistent state bucket and fails at step one. PR-A gains a
-   one-time **bootstrap prerequisite**: create the state bucket + DynamoDB
-   lock table (+ the `openems-demo-secret` referenced by `data-source.tf`),
-   and confirm the repo's AWS secrets are valid with sufficient permissions
-   (or move to OIDC and grant the role).
+   a state bucket that (as far as verified) doesn't exist and fails at step
+   one. PR-A gains a one-time **bootstrap prerequisite**: create
+   `eiot-openems-tf-state-file` (the name `iac/backend.tf` reads; versioning
+   ON, SSE, block-public-access — see #83's hardening checklist. No DynamoDB
+   table: `backend.tf` uses S3-native locking via `use_lockfile`), and
+   confirm the repo's AWS secrets are valid with sufficient permissions (or
+   move to OIDC and grant the role).
+   ⚠️ **Sequencing guard (#83): do NOT create the state bucket until main's
+   destroy-on-push workflow is defused.** The #81 fix landed on
+   `local-deployment` only; main's copy still runs `terraform destroy` on
+   push and is inert *only because the bucket is missing* — creating the
+   bucket arms it. Defuse first (port the #81 hardening to main, delete the
+   workflow there, or branch-protect main).
 3. The **dev EC2 pattern** (`iac/dev` + `setup.sh`) is today's only working
    deployment and stays the dev environment; this plan's ECS stack is the
    production counterpart.
@@ -117,7 +128,8 @@ what upstream's two-tier split is for). Therefore:
 The existing `iac/` state has drifted (task-def revision 8 was iterated by
 the pipeline outside Terraform). Task definitions become Terraform-owned
 again in PR-A; the CI "render + deploy" flow updates images only. Same S3
-state bucket + DynamoDB lock table (that is all they're used for).
+state bucket, S3-native locking — no DynamoDB table (that is all it's used
+for).
 
 ---
 
