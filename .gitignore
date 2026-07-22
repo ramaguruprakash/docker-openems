@@ -10,3 +10,7 @@ iac/.terraform.lock.hcl
 openems-edge/config-edge*/
 docker-compose.override.yml
 __pycache__/
+
+# OpenEMS jars are fetched at build time (see Dockerfiles), not committed
+openems-backend/openems-backend.jar
+openems-edge/openems.jar
